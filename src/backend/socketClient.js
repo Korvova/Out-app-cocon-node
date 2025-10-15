@@ -132,7 +132,9 @@ async function startSocketBridge({ store }) {
 
         console.log('[socket] Checking for NEW voting template with IndividualOption=5...');
         const templates = await client.getVotingTemplates();
-        const newTemplateName = 'Vote_Store_Results_v2';
+        // Use v3 to ensure we create a fresh template with correct IndividualOption=5
+        // Old templates may have been deleted or created without correct settings
+        const newTemplateName = 'Vote_Store_Results_v3';
         const newTemplateExists = templates.some(t => (t.Title || t.Name) === newTemplateName);
 
         if (newTemplateExists) {

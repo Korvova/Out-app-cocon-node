@@ -139,9 +139,10 @@ class CoconClient {
         duration: 180,
         canCorrect: true
       });
-      // Create new template with IndividualOption=4 to store results in DB
+      // Create new template with IndividualOption=5 to store results in DB
+      // Using v3 to ensure fresh template with correct settings
       await this.createVotingTemplate({
-        title: 'Vote_Store_Results_v2',
+        title: 'Vote_Store_Results_v3',
         voteType: 'OPEN',
         duration: 180,
         canCorrect: true
@@ -355,7 +356,8 @@ class CoconClient {
     // Try new template FIRST (with IndividualOption=5 to store results in DB!)
     // IMPORTANT: Try 3_Vote_Correctable BEFORE Vote_Correctable_Dynamic!
     // Vote_Correctable_Dynamic doesn't store individual votes!
-    const templatesToTry = ['Vote_Store_Results_v2', 'Vote_Store_Results', '3_Vote_Correctable', '3_Vote_Public', 'Vote_Correctable_Dynamic', '3_Vote_Secret'];
+    // v3 is the latest template with confirmed IndividualOption=5 setting
+    const templatesToTry = ['Vote_Store_Results_v3', 'Vote_Store_Results_v2', 'Vote_Store_Results', '3_Vote_Correctable', '3_Vote_Public', 'Vote_Correctable_Dynamic', '3_Vote_Secret'];
 
     for (const templateName of templatesToTry) {
       try {
