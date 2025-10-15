@@ -156,16 +156,31 @@ async function startSocketBridge({ store }) {
       const result = await handleCommand({ type, payload, store });
 
       // Special handling for StopVoting: send voting results to server
-      if (type === 'StopVoting' && result && result.votes && result.votes.length > 0) {
-        console.log(`[socket] 📤 Sending voting results to server...`);
-        sock.emit('connector:voting:results', {
-          agendaSequence: result.agendaSequence,
-          agendaDbId: result.agendaDbId,
-          votesCount: result.votesCount,
-          votes: result.votes,
-          timestamp: new Date().toISOString()
-        });
-        console.log(`[socket] ✅ Voting results sent to server (${result.votesCount} votes)`);
+      // Send both individual votes (if available) and aggregated results
+      if (type === 'StopVoting' && result && result.ok) {
+        const hasIndividualVotes = result.votes && result.votes.length > 0;
+        const hasAggregatedResults = result.aggregated && result.aggregated.totalVotes > 0;
+
+        if (hasIndividualVotes || hasAggregatedResults) {
+          console.log(`[socket] 📤 Sending voting results to server...`);
+          sock.emit('connector:voting:results', {
+            agendaSequence: result.agendaSequence,
+            agendaDbId: result.agendaDbId,
+            votesCount: result.votesCount || 0,
+            votes: result.votes || [],
+            aggregated: result.aggregated || null,
+            timestamp: new Date().toISOString()
+          });
+
+          if (hasIndividualVotes) {
+            console.log(`[socket] ✅ Sent ${result.votesCount} individual votes to server`);
+          }
+          if (hasAggregatedResults) {
+            console.log(`[socket] ✅ Sent aggregated results: FOR=${result.aggregated.votesFor}, AGAINST=${result.aggregated.votesAgainst}, ABSTAIN=${result.aggregated.votesAbstain}`);
+          }
+        } else {
+          console.log(`[socket] ⚠️ StopVoting completed but no votes found (neither individual nor aggregated)`);
+        }
       }
 
       if (id) {
