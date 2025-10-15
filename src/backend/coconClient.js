@@ -526,21 +526,36 @@ class CoconClient {
           }
 
           if (results.length > 0) {
-            // Map VotingOptionId to choice using relative positioning
-            // Our template ALWAYS creates options in this order:
-            // Option 1 = "За" (FOR), Option 2 = "Против" (AGAINST), Option 3 = "Воздержался" (ABSTAIN)
-            // So: minId = FOR, minId+1 = AGAINST, minId+2 = ABSTAIN
+            // CRITICAL FIX: Map VotingOptionId using cached VotingOptions from template definition!
+            // DO NOT use min ID from results - if everyone votes AGAINST, min would be wrong ID!
+            // Must use VotingOptions saved when voting was created to get correct IDs.
 
-            // Find minimum VotingOptionId to establish baseline
-            const allOptionIds = results.map(v => v.VotingOptionId);
-            const minOptionId = Math.min(...allOptionIds);
-            const mapping = {
-              [minOptionId]: 'FOR',
-              [minOptionId + 1]: 'AGAINST',
-              [minOptionId + 2]: 'ABSTAIN'
-            };
+            let mapping = {};
 
-            console.log(`[CoconClient] 📊 Option ID mapping (baseId=${minOptionId}):`, mapping);
+            // Try to use cached VotingOptions first (most reliable)
+            if (this._cachedVotingOptions && this._cachedVotingOptions.length >= 3) {
+              console.log(`[CoconClient] 📊 Using cached VotingOptions for mapping:`, JSON.stringify(this._cachedVotingOptions, null, 2));
+
+              // Map by Name (most reliable)
+              for (const opt of this._cachedVotingOptions) {
+                if (opt.Name === 'За') mapping[opt.Id] = 'FOR';
+                else if (opt.Name === 'Против') mapping[opt.Id] = 'AGAINST';
+                else if (opt.Name === 'Воздержался') mapping[opt.Id] = 'ABSTAIN';
+              }
+
+              console.log(`[CoconClient] 📊 Mapped by name from VotingOptions:`, mapping);
+            } else {
+              // Fallback: use min ID from results (OLD BUGGY METHOD - only if VotingOptions not available)
+              console.warn(`[CoconClient] ⚠️ WARNING: VotingOptions not cached, using FALLBACK mapping (may be wrong if not all options voted!)`);
+              const allOptionIds = results.map(v => v.VotingOptionId);
+              const minOptionId = Math.min(...allOptionIds);
+              mapping = {
+                [minOptionId]: 'FOR',
+                [minOptionId + 1]: 'AGAINST',
+                [minOptionId + 2]: 'ABSTAIN'
+              };
+              console.log(`[CoconClient] 📊 Fallback mapping (baseId=${minOptionId}):`, mapping);
+            }
 
             console.log('========== VOTING RESULTS ==========');
             results.forEach((vote, index) => {
