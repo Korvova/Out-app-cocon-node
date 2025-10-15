@@ -458,14 +458,28 @@ class CoconClient {
 
         if (dbId) {
           console.log(`[CoconClient] ✅ Found DB ID: ${dbId} for sequence ${globalCurrentAgendaId}`);
+
+          // Get voting option mapping to understand which ID = FOR/AGAINST/ABSTAIN
+          const mapping = await this.getVotingOptionMapping(dbId);
+
           const results = await this.getIndividualVotingResults(dbId);
           console.log(`[CoconClient] ✅ Got ${results.length} votes from CoCon:`);
           console.log('========== VOTING RESULTS ==========');
           results.forEach((vote, index) => {
-            console.log(`  ${index + 1}. DelegateId: ${vote.DelegateId}, VotingOptionId: ${vote.VotingOptionId}, Seat: ${vote.SeatNumber}`);
+            // Try to map VotingOptionId to choice
+            let choice = 'UNKNOWN';
+            if (mapping.optionIdFor && vote.VotingOptionId === mapping.optionIdFor) {
+              choice = 'FOR';
+            } else if (mapping.optionIdAgainst && vote.VotingOptionId === mapping.optionIdAgainst) {
+              choice = 'AGAINST';
+            } else if (mapping.optionIdAbstain && vote.VotingOptionId === mapping.optionIdAbstain) {
+              choice = 'ABSTAIN';
+            }
+            console.log(`  ${index + 1}. DelegateId: ${vote.DelegateId}, VotingOptionId: ${vote.VotingOptionId} (${choice}), Seat: ${vote.SeatNumber}`);
           });
           console.log('====================================');
           console.log(`[CoconClient] Full results:`, JSON.stringify(results, null, 2));
+          console.log(`[CoconClient] Option mapping:`, JSON.stringify(mapping, null, 2));
         } else {
           console.error(`[CoconClient] ❌ Could not find DB ID for agenda ${globalCurrentAgendaId}`);
         }
@@ -571,6 +585,43 @@ class CoconClient {
     } catch (e) {
       console.error(`[CoconClient] Failed to get individual voting results: ${e.message}`);
       return [];
+    }
+  }
+
+  // Get voting option IDs mapping from aggregated results
+  // Returns mapping: { optionIdFor: X, optionIdAgainst: Y, optionIdAbstain: Z }
+  async getVotingOptionMapping(agendaId) {
+    const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
+    if (!coConBase) throw new Error('coConBase not configured');
+
+    try {
+      const url = `${coConBase}/Voting/GetAggregatedVotingResults/?Id=${encodeURIComponent(agendaId)}`;
+      console.log(`[CoconClient] Getting voting options mapping from: ${url}`);
+      const resp = await axios.get(url, { timeout: 10000 });
+      const raw = typeof resp.data === 'string' ? safeParse(resp.data) : resp.data;
+
+      console.log(`[CoconClient] GetAggregatedVotingResults response:`, JSON.stringify(raw, null, 2));
+
+      const options = raw?.AggregatedVotingResults?.Options || [];
+
+      // Find option IDs by description
+      // Our template has: "За", "Против", "Воздержался"
+      const optionFor = options.find(opt => opt.Description === 'За' || opt.Description === 'FOR');
+      const optionAgainst = options.find(opt => opt.Description === 'Против' || opt.Description === 'AGAINST');
+      const optionAbstain = options.find(opt => opt.Description === 'Воздержался' || opt.Description === 'ABSTAIN' || opt.IsAbstain === true);
+
+      const mapping = {
+        optionIdFor: optionFor?.Id || null,
+        optionIdAgainst: optionAgainst?.Id || null,
+        optionIdAbstain: optionAbstain?.Id || null
+      };
+
+      console.log(`[CoconClient] Voting option mapping:`, mapping);
+      return mapping;
+    } catch (e) {
+      console.error(`[CoconClient] Failed to get voting option mapping: ${e.message}`);
+      // Return null mapping - will need to handle this
+      return { optionIdFor: null, optionIdAgainst: null, optionIdAbstain: null };
     }
   }
 
