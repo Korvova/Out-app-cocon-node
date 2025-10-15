@@ -139,9 +139,9 @@ class CoconClient {
         duration: 180,
         canCorrect: true
       });
-      // Create new template with IndividualOption=2 to store results in DB
+      // Create new template with IndividualOption=4 to store results in DB
       await this.createVotingTemplate({
-        title: 'Vote_Store_Results',
+        title: 'Vote_Store_Results_v2',
         voteType: 'OPEN',
         duration: 180,
         canCorrect: true
@@ -270,9 +270,9 @@ class CoconClient {
       `AbstainIndex=3&` +
       `BadgeOption=4&` + // All voting units
       `OverallOption=${voteType === 'OPEN' ? '4' : '1'}&` + // OPEN: show to all
-      // CRITICAL: IndividualOption=2 stores results in DB for GetIndividualVotingResults!
-      // Option 5 sends real-time events but may NOT store in DB for API access
-      `IndividualOption=2&` + // Store individual results for API (not shown during vote)
+      // TESTING: Try IndividualOption=4 (All operators) to store results in DB!
+      // 1=Never, 2=Not during vote, 3=Vote master only, 4=All operators, 5=Everybody during
+      `IndividualOption=4&` + // All operators applications - should store in DB!
       `CanCorrect=${canCorrect}&` + // IMPORTANT: Allow changing vote!
       `HasPin=false&` +
       `IsWeightUsed=false&` +
@@ -341,8 +341,8 @@ class CoconClient {
 
     // 2. Try to use AddInstantVote to create voting instance
     // According to docs: "Adds a new instance voting item" - creates but doesn't start
-    // Try new template FIRST (with IndividualOption=2 to store results in DB!)
-    const templatesToTry = ['Vote_Store_Results', 'Vote_Correctable_Dynamic', '3_Vote_Correctable', '3_Vote_Public', '3_Vote_Secret'];
+    // Try new template FIRST (with IndividualOption=4 to store results in DB!)
+    const templatesToTry = ['Vote_Store_Results_v2', 'Vote_Store_Results', 'Vote_Correctable_Dynamic', '3_Vote_Correctable', '3_Vote_Public', '3_Vote_Secret'];
 
     for (const templateName of templatesToTry) {
       try {
