@@ -124,28 +124,29 @@ async function startSocketBridge({ store }) {
         console.log('[socket] ❌ NO eventListener to start!');
       }
 
-      // Create voting template with CanCorrect=true on startup (once)
-      // Check if template already exists to avoid duplicates
+      // Create NEW voting template with IndividualOption=5 to store results
+      // This template has the CORRECT settings to save individual votes in CoCon DB
       try {
         const { CoconClient } = require('./coconClient');
         const client = new CoconClient({ store });
 
-        console.log('[socket] Checking for existing voting templates...');
+        console.log('[socket] Checking for NEW voting template with IndividualOption=5...');
         const templates = await client.getVotingTemplates();
-        const templateName = 'Vote_Correctable_Dynamic';
-        const exists = templates.some(t => (t.Title || t.Name) === templateName);
+        const newTemplateName = 'Vote_Store_Results_v2';
+        const newTemplateExists = templates.some(t => (t.Title || t.Name) === newTemplateName);
 
-        if (exists) {
-          console.log(`[socket] ✅ Template "${templateName}" already exists, skipping creation`);
+        if (newTemplateExists) {
+          console.log(`[socket] ✅ Template "${newTemplateName}" already exists with IndividualOption=5`);
         } else {
-          console.log('[socket] Creating voting template with dynamic timer (CanCorrect=true)...');
+          console.log(`[socket] Creating NEW template "${newTemplateName}" with IndividualOption=5...`);
           await client.createVotingTemplate({
-            title: templateName,
+            title: newTemplateName,
             voteType: 'OPEN',
             duration: 300, // Default 5 minutes (will be overridden per vote)
             canCorrect: true
           });
-          console.log('[socket] ✅ Voting template created successfully!');
+          console.log(`[socket] ✅ NEW template "${newTemplateName}" created with IndividualOption=5!`);
+          console.log('[socket] 🎉 This template will SAVE individual votes in CoCon database!');
         }
       } catch (e) {
         console.log('[socket] ⚠️ Could not check/create voting template:', e.message);
