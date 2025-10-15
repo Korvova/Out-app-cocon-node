@@ -581,23 +581,33 @@ class CoconClient {
 
       const agendaItems = raw?.GetAgendaItemInformationInRunningMeeting?.AgendaItems || [];
       console.log(`[CoconClient] Found ${agendaItems.length} agenda items in meeting`);
+      console.log(`[CoconClient] All items:`, JSON.stringify(agendaItems.map(i => ({ Id: i.Id, IdInDb: i.IdInDb, State: i.State, Type: i.Type, Title: i.Title })), null, 2));
 
-      // Find item by sequence (Id field) or by State=active
-      let targetItem = agendaItems.find(item => String(item.Id) === String(sequenceNumber));
+      // CRITICAL FIX: Find VotingAgendaItem, NOT Discussion item!
+      // When AddInstantVote is called, it creates a CHILD VotingAgendaItem under the Discussion item
+      // We need to find this VotingAgendaItem by Type, not by sequence number!
 
-      if (!targetItem) {
-        // Try to find active voting item
-        targetItem = agendaItems.find(item => item.State === 'active' && item.Type === 'VotingAgendaItem');
-        console.log(`[CoconClient] No item with Id=${sequenceNumber}, using active voting item`);
+      // Strategy 1: Find most recent VotingAgendaItem (by highest IdInDb) with State='ended' or 'active'
+      const votingItems = agendaItems.filter(item => item.Type === 'VotingAgendaItem');
+      console.log(`[CoconClient] Found ${votingItems.length} VotingAgendaItem(s)`);
+
+      if (votingItems.length > 0) {
+        // Sort by IdInDb descending (most recent first)
+        votingItems.sort((a, b) => (b.IdInDb || 0) - (a.IdInDb || 0));
+        const latestVoting = votingItems[0];
+        console.log(`[CoconClient] ✅ Using latest VotingAgendaItem: Id="${latestVoting.Id}", IdInDb=${latestVoting.IdInDb}, State="${latestVoting.State}", Title="${latestVoting.Title}"`);
+        return latestVoting.IdInDb;
       }
 
+      // Fallback: Try to find by sequence (old logic)
+      let targetItem = agendaItems.find(item => String(item.Id) === String(sequenceNumber));
+
       if (targetItem && targetItem.IdInDb) {
-        console.log(`[CoconClient] ✅ Found agenda item: Id="${targetItem.Id}", IdInDb=${targetItem.IdInDb}, State="${targetItem.State}"`);
+        console.log(`[CoconClient] ⚠️ Using fallback: Id="${targetItem.Id}", IdInDb=${targetItem.IdInDb}, State="${targetItem.State}", Type="${targetItem.Type}"`);
         return targetItem.IdInDb;
       }
 
-      console.error(`[CoconClient] ❌ Could not find agenda item with Id=${sequenceNumber}`);
-      console.log(`[CoconClient] Available items:`, JSON.stringify(agendaItems.map(i => ({ Id: i.Id, IdInDb: i.IdInDb, State: i.State, Type: i.Type })), null, 2));
+      console.error(`[CoconClient] ❌ Could not find any VotingAgendaItem or agenda with Id=${sequenceNumber}`);
       return null;
     } catch (e) {
       console.error(`[CoconClient] Failed to get agenda DB ID: ${e.message}`);
