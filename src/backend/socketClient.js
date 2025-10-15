@@ -65,6 +65,26 @@ async function startSocketBridge({ store }) {
   }
   console.log('[socket] ============================================');
 
+  // Intercept console.log to send logs to server
+  const originalLog = console.log;
+  console.log = (...args) => {
+    originalLog(...args); // Still log locally
+    // Send to server if connected
+    if (sock && sock.connected) {
+      try {
+        const message = args.map(arg =>
+          typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+        ).join(' ');
+        sock.emit('connector:log', {
+          timestamp: new Date().toISOString(),
+          message
+        });
+      } catch (e) {
+        // Ignore errors in log forwarding
+      }
+    }
+  };
+
   sock.on('connect', async () => {
     try {
       const hello = {
