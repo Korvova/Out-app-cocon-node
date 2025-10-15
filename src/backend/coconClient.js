@@ -451,14 +451,24 @@ class CoconClient {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       try {
-        const results = await this.getIndividualVotingResults(globalCurrentAgendaId);
-        console.log(`[CoconClient] ✅ Got ${results.length} votes from CoCon:`);
-        console.log('========== VOTING RESULTS ==========');
-        results.forEach((vote, index) => {
-          console.log(`  ${index + 1}. DelegateId: ${vote.DelegateId}, VotingOptionId: ${vote.VotingOptionId}, Seat: ${vote.SeatNumber}`);
-        });
-        console.log('====================================');
-        console.log(`[CoconClient] Full results:`, JSON.stringify(results, null, 2));
+        // CRITICAL FIX: Get real DB ID from CoCon!
+        // GetIndividualVotingResults needs IdInDb, not sequence number!
+        console.log(`[CoconClient] 🔍 Getting real DB ID for agenda sequence ${globalCurrentAgendaId}...`);
+        const dbId = await this.getAgendaDbId(globalCurrentAgendaId);
+
+        if (dbId) {
+          console.log(`[CoconClient] ✅ Found DB ID: ${dbId} for sequence ${globalCurrentAgendaId}`);
+          const results = await this.getIndividualVotingResults(dbId);
+          console.log(`[CoconClient] ✅ Got ${results.length} votes from CoCon:`);
+          console.log('========== VOTING RESULTS ==========');
+          results.forEach((vote, index) => {
+            console.log(`  ${index + 1}. DelegateId: ${vote.DelegateId}, VotingOptionId: ${vote.VotingOptionId}, Seat: ${vote.SeatNumber}`);
+          });
+          console.log('====================================');
+          console.log(`[CoconClient] Full results:`, JSON.stringify(results, null, 2));
+        } else {
+          console.error(`[CoconClient] ❌ Could not find DB ID for agenda ${globalCurrentAgendaId}`);
+        }
       } catch (e) {
         console.error(`[CoconClient] ❌ Failed to fetch voting results: ${e.message}`);
       }
@@ -478,6 +488,44 @@ class CoconClient {
     // }
 
     return 'OK';
+  }
+
+  // Get real DB ID from CoCon for agenda sequence number
+  // CRITICAL: GetIndividualVotingResults needs IdInDb, not sequence!
+  async getAgendaDbId(sequenceNumber) {
+    const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
+    if (!coConBase) throw new Error('coConBase not configured');
+
+    try {
+      const url = `${coConBase}/Meeting_Agenda/GetAgendaItemInformationInRunningMeeting`;
+      console.log(`[CoconClient] Getting agenda info from: ${url}`);
+      const resp = await axios.get(url, { timeout: 10000 });
+      const raw = typeof resp.data === 'string' ? safeParse(resp.data) : resp.data;
+
+      const agendaItems = raw?.GetAgendaItemInformationInRunningMeeting?.AgendaItems || [];
+      console.log(`[CoconClient] Found ${agendaItems.length} agenda items in meeting`);
+
+      // Find item by sequence (Id field) or by State=active
+      let targetItem = agendaItems.find(item => String(item.Id) === String(sequenceNumber));
+
+      if (!targetItem) {
+        // Try to find active voting item
+        targetItem = agendaItems.find(item => item.State === 'active' && item.Type === 'VotingAgendaItem');
+        console.log(`[CoconClient] No item with Id=${sequenceNumber}, using active voting item`);
+      }
+
+      if (targetItem && targetItem.IdInDb) {
+        console.log(`[CoconClient] ✅ Found agenda item: Id="${targetItem.Id}", IdInDb=${targetItem.IdInDb}, State="${targetItem.State}"`);
+        return targetItem.IdInDb;
+      }
+
+      console.error(`[CoconClient] ❌ Could not find agenda item with Id=${sequenceNumber}`);
+      console.log(`[CoconClient] Available items:`, JSON.stringify(agendaItems.map(i => ({ Id: i.Id, IdInDb: i.IdInDb, State: i.State, Type: i.Type })), null, 2));
+      return null;
+    } catch (e) {
+      console.error(`[CoconClient] Failed to get agenda DB ID: ${e.message}`);
+      return null;
+    }
   }
 
   // Get individual voting results for a specific agenda item
