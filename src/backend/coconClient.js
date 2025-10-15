@@ -472,8 +472,27 @@ class CoconClient {
         if (dbId) {
           console.log(`[CoconClient] ✅ Found DB ID: ${dbId} for sequence ${globalCurrentAgendaId}`);
 
-          const results = await this.getIndividualVotingResults(dbId);
-          console.log(`[CoconClient] ✅ Got ${results.length} votes from CoCon:`);
+          let results = await this.getIndividualVotingResults(dbId);
+          console.log(`[CoconClient] ✅ Got ${results.length} individual votes from CoCon`);
+
+          // FALLBACK: If no individual results, try aggregated results
+          if (results.length === 0) {
+            console.log(`[CoconClient] ⚠️ No individual votes found, trying aggregated results...`);
+            const aggregated = await this.getAggregatedVotingResults(dbId);
+            if (aggregated) {
+              console.log(`[CoconClient] ✅ Got aggregated results: FOR=${aggregated.votesFor}, AGAINST=${aggregated.votesAgainst}, ABSTAIN=${aggregated.votesAbstain}`);
+              // We have aggregated results but don't know WHO voted
+              // Return aggregated data for server to handle
+              return {
+                ok: true,
+                agendaSequence: globalCurrentAgendaId,
+                agendaDbId: dbId,
+                votesCount: aggregated.totalVotes,
+                votes: [],
+                aggregated: aggregated // Server needs to handle this differently
+              };
+            }
+          }
 
           if (results.length > 0) {
             // Map VotingOptionId to choice using relative positioning
@@ -629,6 +648,42 @@ class CoconClient {
     } catch (e) {
       console.error(`[CoconClient] Failed to get individual voting results: ${e.message}`);
       return [];
+    }
+  }
+
+  // Get aggregated voting results (total counts, not individual votes)
+  // Returns: { votesFor, votesAgainst, votesAbstain, totalVotes }
+  async getAggregatedVotingResults(agendaId) {
+    const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
+    if (!coConBase) throw new Error('coConBase not configured');
+
+    try {
+      const url = `${coConBase}/Voting/GetAggregatedVotingResults/?Id=${encodeURIComponent(agendaId)}`;
+      console.log(`[CoconClient] Getting aggregated voting results from: ${url}`);
+      const resp = await axios.get(url, { timeout: 10000 });
+      const raw = typeof resp.data === 'string' ? safeParse(resp.data) : resp.data;
+
+      console.log(`[CoconClient] GetAggregatedVotingResults response:`, JSON.stringify(raw, null, 2));
+
+      const options = raw?.AggregatedVotingResults?.Options || [];
+
+      // Find options by description
+      // Our template has: "За", "Против", "Воздержался"
+      const optionFor = options.find(opt => opt.Description === 'За' || opt.Description === 'FOR');
+      const optionAgainst = options.find(opt => opt.Description === 'Против' || opt.Description === 'AGAINST');
+      const optionAbstain = options.find(opt => opt.Description === 'Воздержался' || opt.Description === 'ABSTAIN' || opt.IsAbstain === true);
+
+      const votesFor = optionFor?.Votes || 0;
+      const votesAgainst = optionAgainst?.Votes || 0;
+      const votesAbstain = optionAbstain?.Votes || 0;
+      const totalVotes = votesFor + votesAgainst + votesAbstain;
+
+      console.log(`[CoconClient] Aggregated results: FOR=${votesFor}, AGAINST=${votesAgainst}, ABSTAIN=${votesAbstain}, TOTAL=${totalVotes}`);
+
+      return { votesFor, votesAgainst, votesAbstain, totalVotes };
+    } catch (e) {
+      console.error(`[CoconClient] Failed to get aggregated voting results: ${e.message}`);
+      return null;
     }
   }
 
