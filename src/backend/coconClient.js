@@ -384,7 +384,26 @@ class CoconClient {
 
   async stopVoting() {
     console.log(`[CoconClient] Stopping voting...`);
-    await this.setVotingState('Stop');
+    const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
+
+    // For AddInstantVote, we need to use EndAgenda API with the agendaItemNumber
+    if (globalCurrentAgendaId) {
+      console.log(`[CoconClient] Calling EndAgenda for agenda ${globalCurrentAgendaId}...`);
+      try {
+        const url = `${coConBase}/Meeting_Agenda/EndAgenda?MeetingId=${globalCurrentAgendaId}`;
+        console.log(`[CoconClient] EndAgenda URL: ${url}`);
+        const resp = await axios.get(url, { timeout: 8000 });
+        console.log(`[CoconClient] EndAgenda response:`, resp.data);
+      } catch (e) {
+        console.warn(`[CoconClient] EndAgenda failed: ${e.message}, trying SetVotingState('Stop')...`);
+        // Fallback to SetVotingState if EndAgenda fails
+        await this.setVotingState('Stop');
+      }
+    } else {
+      // If no agenda ID, use SetVotingState as fallback
+      await this.setVotingState('Stop');
+    }
+
     console.log(`[CoconClient] Voting stopped successfully`);
 
     // Verify voting state actually changed to Stopped
