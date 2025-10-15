@@ -384,6 +384,35 @@ class CoconClient {
           // IMPORTANT: AddInstantVote only creates voting, need to Start it!
           await this.setVotingState('Start');
           console.log(`[CoconClient] ✓ Voting started successfully!`);
+
+          // CRITICAL: Get IdInDb of the created voting item RIGHT AFTER START!
+          // This ensures we query the correct voting item for results
+          try {
+            console.log(`[CoconClient] 🔍 Getting IdInDb of newly created voting...`);
+            const agendaInfo = await axios.get(`${coConBase}/Meeting_Agenda/GetAgendaItemInformationInRunningMeeting`, { timeout: 5000 });
+            const agendaRaw = typeof agendaInfo.data === 'string' ? safeParse(agendaInfo.data) : agendaInfo.data;
+            const items = agendaRaw?.GetAgendaItemInformationInRunningMeeting?.AgendaItems || [];
+
+            // Find ACTIVE VotingAgendaItem with highest IdInDb (just created)
+            const activeVotings = items.filter(i => i.Type === 'VotingAgendaItem' && i.State === 'active');
+            if (activeVotings.length > 0) {
+              activeVotings.sort((a, b) => (b.IdInDb || 0) - (a.IdInDb || 0));
+              const newVoting = activeVotings[0];
+
+              // SAVE IdInDb for later use in stopVoting!
+              this._currentVotingIdInDb = newVoting.IdInDb;
+              console.log(`[CoconClient] ✅ Saved IdInDb=${this._currentVotingIdInDb} for results retrieval`);
+
+              // Save VotingOptions for mapping
+              if (newVoting.VotingOptions) {
+                this._cachedVotingOptions = newVoting.VotingOptions;
+                console.log(`[CoconClient] 📊 Saved ${newVoting.VotingOptions.length} VotingOptions for mapping`);
+              }
+            }
+          } catch (e) {
+            console.log(`[CoconClient] ⚠️ Could not get IdInDb after start: ${e.message}`);
+          }
+
           return 'OK';
         } else {
           console.log(`[CoconClient] AddInstantVote with ${templateName} returned false, trying next...`);
@@ -572,6 +601,13 @@ class CoconClient {
   async getAgendaDbId(sequenceNumber) {
     const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
     if (!coConBase) throw new Error('coConBase not configured');
+
+    // CRITICAL: If we saved IdInDb when starting voting, use it!
+    // This is more reliable than searching through agenda items
+    if (this._currentVotingIdInDb) {
+      console.log(`[CoconClient] ✅ Using SAVED IdInDb=${this._currentVotingIdInDb} from voting start`);
+      return this._currentVotingIdInDb;
+    }
 
     try {
       const url = `${coConBase}/Meeting_Agenda/GetAgendaItemInformationInRunningMeeting`;
