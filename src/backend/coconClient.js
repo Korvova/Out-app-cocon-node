@@ -4,10 +4,12 @@
 
 const axios = require('axios');
 
+// Global storage for current agenda ID (shared across all CoconClient instances)
+let globalCurrentAgendaId = null;
+
 class CoconClient {
   constructor({ store }) {
     this.store = store;
-    this.currentAgendaId = null; // Store current agenda ID for voting results
   }
 
   get cfg() { return this.store.get('cocon') || {}; }
@@ -319,9 +321,9 @@ class CoconClient {
 
     console.log(`[CoconClient] Starting voting: number=${agendaItemNumber}, title="${votingTitle}", type=${voteType}, duration=${duration}s`);
 
-    // Store agenda ID for later retrieval of results
-    this.currentAgendaId = agendaItemNumber;
-    console.log(`[CoconClient] Stored agenda ID: ${this.currentAgendaId}`);
+    // Store agenda ID globally for later retrieval of results
+    globalCurrentAgendaId = agendaItemNumber;
+    console.log(`[CoconClient] Stored agenda ID: ${globalCurrentAgendaId}`);
 
     // 1. Set active agenda item
     await this.setCurrentQuestionInAgenda(agendaItemNumber);
@@ -384,10 +386,10 @@ class CoconClient {
     console.log(`[CoconClient] Voting stopped successfully`);
 
     // AUTO-FETCH VOTING RESULTS AFTER STOP
-    if (this.currentAgendaId) {
-      console.log(`[CoconClient] 📊 AUTO-FETCHING voting results for agenda ${this.currentAgendaId}...`);
+    if (globalCurrentAgendaId) {
+      console.log(`[CoconClient] 📊 AUTO-FETCHING voting results for agenda ${globalCurrentAgendaId}...`);
       try {
-        const results = await this.getIndividualVotingResults(this.currentAgendaId);
+        const results = await this.getIndividualVotingResults(globalCurrentAgendaId);
         console.log(`[CoconClient] ✅ Got ${results.length} votes from CoCon:`);
         console.log('========== VOTING RESULTS ==========');
         results.forEach((vote, index) => {
