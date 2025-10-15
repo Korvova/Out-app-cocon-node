@@ -587,16 +587,44 @@ class CoconClient {
       // When AddInstantVote is called, it creates a CHILD VotingAgendaItem under the Discussion item
       // We need to find this VotingAgendaItem by Type, not by sequence number!
 
-      // Strategy 1: Find most recent VotingAgendaItem (by highest IdInDb) with State='ended' or 'active'
+      // IMPORTANT: Find ENDED voting items, not ACTIVE!
+      // Active items may not have finalized results yet
       const votingItems = agendaItems.filter(item => item.Type === 'VotingAgendaItem');
       console.log(`[CoconClient] Found ${votingItems.length} VotingAgendaItem(s)`);
 
-      if (votingItems.length > 0) {
-        // Sort by IdInDb descending (most recent first)
-        votingItems.sort((a, b) => (b.IdInDb || 0) - (a.IdInDb || 0));
-        const latestVoting = votingItems[0];
-        console.log(`[CoconClient] ✅ Using latest VotingAgendaItem: Id="${latestVoting.Id}", IdInDb=${latestVoting.IdInDb}, State="${latestVoting.State}", Title="${latestVoting.Title}"`);
-        return latestVoting.IdInDb;
+      // Separate ended and active items
+      const endedVotings = votingItems.filter(item => item.State === 'ended');
+      const activeVotings = votingItems.filter(item => item.State === 'active');
+
+      console.log(`[CoconClient] - ${endedVotings.length} ended, ${activeVotings.length} active`);
+
+      if (endedVotings.length > 0) {
+        // Use latest ENDED voting (most recent by IdInDb)
+        endedVotings.sort((a, b) => (b.IdInDb || 0) - (a.IdInDb || 0));
+        const latestEnded = endedVotings[0];
+        console.log(`[CoconClient] ✅ Using latest ENDED VotingAgendaItem: Id="${latestEnded.Id}", IdInDb=${latestEnded.IdInDb}, Title="${latestEnded.Title}"`);
+
+        // Store VotingOptions for mapping later
+        if (latestEnded.VotingOptions && latestEnded.VotingOptions.length > 0) {
+          console.log(`[CoconClient] 📊 VotingOptions:`, JSON.stringify(latestEnded.VotingOptions, null, 2));
+          // Cache options for later use in mapping
+          this._cachedVotingOptions = latestEnded.VotingOptions;
+        }
+
+        return latestEnded.IdInDb;
+      }
+
+      // Fallback to active if no ended items
+      if (activeVotings.length > 0) {
+        activeVotings.sort((a, b) => (b.IdInDb || 0) - (a.IdInDb || 0));
+        const latestActive = activeVotings[0];
+        console.log(`[CoconClient] ⚠️ No ended items, using latest ACTIVE: Id="${latestActive.Id}", IdInDb=${latestActive.IdInDb}, Title="${latestActive.Title}"`);
+
+        if (latestActive.VotingOptions && latestActive.VotingOptions.length > 0) {
+          this._cachedVotingOptions = latestActive.VotingOptions;
+        }
+
+        return latestActive.IdInDb;
       }
 
       // Fallback: Try to find by sequence (old logic)
