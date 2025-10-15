@@ -459,9 +459,9 @@ class CoconClient {
       console.log(`[CoconClient] 📊 AUTO-FETCHING voting results for agenda ${globalCurrentAgendaId}...`);
       console.log(`[CoconClient] ⚠️ IMPORTANT: Fetching BEFORE Clear to preserve results!`);
 
-      // Wait 1 second for CoCon to finalize results
-      console.log(`[CoconClient] Waiting 1 second for CoCon to finalize results...`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait 2-3 seconds for CoCon to finalize results (increased from 1 second)
+      console.log(`[CoconClient] Waiting 3 seconds for CoCon to finalize results...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       try {
         // CRITICAL FIX: Get real DB ID from CoCon!
@@ -658,31 +658,32 @@ class CoconClient {
     if (!coConBase) throw new Error('coConBase not configured');
 
     try {
-      const url = `${coConBase}/Voting/GetAggregatedVotingResults/?Id=${encodeURIComponent(agendaId)}`;
-      console.log(`[CoconClient] Getting aggregated voting results from: ${url}`);
+      // CoCon 6.10 uses GetGeneralVotingResults instead of GetAggregatedVotingResults
+      const url = `${coConBase}/Voting/GetGeneralVotingResults/?Id=${encodeURIComponent(agendaId)}`;
+      console.log(`[CoconClient] Getting general voting results from: ${url}`);
       const resp = await axios.get(url, { timeout: 10000 });
       const raw = typeof resp.data === 'string' ? safeParse(resp.data) : resp.data;
 
-      console.log(`[CoconClient] GetAggregatedVotingResults response:`, JSON.stringify(raw, null, 2));
+      console.log(`[CoconClient] GetGeneralVotingResults response:`, JSON.stringify(raw, null, 2));
 
-      const options = raw?.AggregatedVotingResults?.Options || [];
+      const options = raw?.GetGeneralVotingResults?.VotingResults?.Options || [];
 
-      // Find options by description
-      // Our template has: "За", "Против", "Воздержался"
-      const optionFor = options.find(opt => opt.Description === 'За' || opt.Description === 'FOR');
-      const optionAgainst = options.find(opt => opt.Description === 'Против' || opt.Description === 'AGAINST');
-      const optionAbstain = options.find(opt => opt.Description === 'Воздержался' || opt.Description === 'ABSTAIN' || opt.IsAbstain === true);
+      // Find options by description or color
+      // Our template has: "За" (Green), "Против" (Red), "Воздержался" (Yellow)
+      const optionFor = options.find(opt => opt.Name === 'За' || opt.Name === 'FOR' || opt.Color?.includes('008000'));
+      const optionAgainst = options.find(opt => opt.Name === 'Против' || opt.Name === 'AGAINST' || opt.Color?.includes('FF0000'));
+      const optionAbstain = options.find(opt => opt.Name === 'Воздержался' || opt.Name === 'ABSTAIN' || opt.Color?.includes('FFFF00'));
 
-      const votesFor = optionFor?.Votes || 0;
-      const votesAgainst = optionAgainst?.Votes || 0;
-      const votesAbstain = optionAbstain?.Votes || 0;
+      const votesFor = optionFor?.Votes?.Count || 0;
+      const votesAgainst = optionAgainst?.Votes?.Count || 0;
+      const votesAbstain = optionAbstain?.Votes?.Count || 0;
       const totalVotes = votesFor + votesAgainst + votesAbstain;
 
-      console.log(`[CoconClient] Aggregated results: FOR=${votesFor}, AGAINST=${votesAgainst}, ABSTAIN=${votesAbstain}, TOTAL=${totalVotes}`);
+      console.log(`[CoconClient] General results: FOR=${votesFor}, AGAINST=${votesAgainst}, ABSTAIN=${votesAbstain}, TOTAL=${totalVotes}`);
 
       return { votesFor, votesAgainst, votesAbstain, totalVotes };
     } catch (e) {
-      console.error(`[CoconClient] Failed to get aggregated voting results: ${e.message}`);
+      console.error(`[CoconClient] Failed to get general voting results: ${e.message}`);
       return null;
     }
   }
