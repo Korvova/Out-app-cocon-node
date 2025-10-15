@@ -332,6 +332,16 @@ class CoconClient {
 
     console.log(`[CoconClient] Starting voting: number=${agendaItemNumber}, title="${votingTitle}", type=${voteType}, duration=${duration}s`);
 
+    // CRITICAL: Clear previous voting results BEFORE starting new voting!
+    // This prevents CoCon from reusing old agenda items with stale results
+    try {
+      console.log(`[CoconClient] Clearing previous voting before start...`);
+      await this.setVotingState('Clear');
+      console.log(`[CoconClient] ✓ Previous voting cleared`);
+    } catch (e) {
+      console.log(`[CoconClient] Clear failed (may be OK if no previous voting): ${e.message}`);
+    }
+
     // Store agenda ID globally for later retrieval of results
     globalCurrentAgendaId = agendaItemNumber;
     console.log(`[CoconClient] Stored agenda ID: ${globalCurrentAgendaId}`);
