@@ -341,7 +341,19 @@ class CoconClient {
         const instantUrl = `${coConBase}/Voting/AddInstantVote/?VotingTemplate=${encodeURIComponent(templateName)}`;
         const instantResp = await axios.get(instantUrl, { timeout: 10000 });
         const instantRaw = typeof instantResp.data === 'string' ? safeParse(instantResp.data) : instantResp.data;
+
+        // LOG FULL RESPONSE to see if there's an ID we're missing!
+        console.log(`[CoconClient] AddInstantVote FULL response:`, JSON.stringify(instantRaw, null, 2));
+
         const result = instantRaw?.AddInstantVote?.Result;
+        const agendaId = instantRaw?.AddInstantVote?.Id || instantRaw?.AddInstantVote?.AgendaId || instantRaw?.AddInstantVote?.VotingId;
+
+        if (agendaId) {
+          console.log(`[CoconClient] ✅ AddInstantVote returned ID: ${agendaId}`);
+          // Update global ID with the real CoCon DB ID!
+          globalCurrentAgendaId = agendaId;
+          console.log(`[CoconClient] Updated stored agenda ID to: ${globalCurrentAgendaId}`);
+        }
 
         if (result === true) {
           console.log(`[CoconClient] ✓ Instant vote created with template: ${templateName}`);
