@@ -497,17 +497,30 @@ class CoconClient {
             }));
 
             console.log(`[CoconClient] 📤 Processed results ready for server:`, JSON.stringify(processedResults, null, 2));
+
+            // Return results for sending to server
+            return {
+              ok: true,
+              agendaSequence: globalCurrentAgendaId,
+              agendaDbId: dbId,
+              votesCount: results.length,
+              votes: processedResults
+            };
           } else {
             console.log(`[CoconClient] ⚠️ No votes found - either nobody voted or results were cleared`);
+            return { ok: true, votesCount: 0, votes: [] };
           }
         } else {
           console.error(`[CoconClient] ❌ Could not find DB ID for agenda ${globalCurrentAgendaId}`);
+          return { ok: false, error: 'Could not find DB ID for agenda' };
         }
       } catch (e) {
         console.error(`[CoconClient] ❌ Failed to fetch voting results: ${e.message}`);
+        return { ok: false, error: e.message };
       }
     } else {
       console.log(`[CoconClient] ⚠️ No agenda ID stored, skipping results fetch`);
+      return { ok: true, votesCount: 0, votes: [] };
     }
 
     // DON'T CLEAR! Let's see if Clear is deleting results
@@ -520,8 +533,6 @@ class CoconClient {
     // } catch (e) {
     //   console.log(`[CoconClient] Clear voting failed: ${e.message}`);
     // }
-
-    return 'OK';
   }
 
   // Get real DB ID from CoCon for agenda sequence number

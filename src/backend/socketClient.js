@@ -155,6 +155,19 @@ async function startSocketBridge({ store }) {
       const { handleCommand } = require('./commandHandlers');
       const result = await handleCommand({ type, payload, store });
 
+      // Special handling for StopVoting: send voting results to server
+      if (type === 'StopVoting' && result && result.votes && result.votes.length > 0) {
+        console.log(`[socket] 📤 Sending voting results to server...`);
+        sock.emit('connector:voting:results', {
+          agendaSequence: result.agendaSequence,
+          agendaDbId: result.agendaDbId,
+          votesCount: result.votesCount,
+          votes: result.votes,
+          timestamp: new Date().toISOString()
+        });
+        console.log(`[socket] ✅ Voting results sent to server (${result.votesCount} votes)`);
+      }
+
       if (id) {
         sock.emit('connector:command:result', { id, ok: true, data: result || null });
       }
