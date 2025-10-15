@@ -180,10 +180,15 @@ class CoconClient {
     const sequence = encodeURIComponent(nextSequence);
     const title = encodeURIComponent(item?.Name ?? String(item?.Number ?? ''));
     const desc = encodeURIComponent(item?.Description ?? '');
-    const type = encodeURIComponent('Discussion');
+    // CRITICAL FIX: Create agenda items as "Voting" type with Vote_Store_Results_v2 template!
+    // This ensures CoCon stores individual votes with IndividualOption=5
+    const type = encodeURIComponent('Voting');
+    const votingTemplate = encodeURIComponent('Vote_Store_Results_v2');
     // API Doc 6.10 section 4.3.4.13: AddAgendaItem expects Title, Des, Sequence, Type
     // NOTE: Sequence must be sequential! CoCon requires next number after last item.
-    const url = `${coConBase}/Meeting_Agenda/AddAgendaItem/?Title=${title}&Des=${desc}&Sequence=${sequence}&Type=${type}`;
+    // For Voting type, must specify VotingTemplate parameter!
+    const url = `${coConBase}/Meeting_Agenda/AddAgendaItem/?Title=${title}&Des=${desc}&Sequence=${sequence}&Type=${type}&VotingTemplate=${votingTemplate}`;
+    console.log(`[CoconClient] Creating VOTING agenda item with template: ${votingTemplate}`);
     const r = await axios.get(url, { timeout: 10000 });
     const raw = typeof r.data === 'string' ? safeParse(r.data) : r.data;
     const id = raw?.AddNewAgendaItem?.Id || raw?.Id || raw?.AddNewAgendaItem?.ID;
