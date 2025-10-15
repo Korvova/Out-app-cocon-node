@@ -456,12 +456,35 @@ class CoconClient {
     const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
     if (!coConBase) throw new Error('coConBase not configured');
 
+    // Try WITHOUT Id parameter first - maybe it returns active voting results
+    console.log(`[CoconClient] Trying to get results WITHOUT Id parameter (active voting)...`);
+    try {
+      const urlNoId = `${coConBase}/Voting/GetIndividualVotingResults`;
+      console.log(`[CoconClient] URL: ${urlNoId}`);
+      const respNoId = await axios.get(urlNoId, { timeout: 10000 });
+      const rawNoId = typeof respNoId.data === 'string' ? safeParse(respNoId.data) : respNoId.data;
+
+      console.log(`[CoconClient] Response WITHOUT Id:`, JSON.stringify(rawNoId, null, 2));
+
+      const resultsNoId = rawNoId?.IndividualVotingResults?.VotingResults || [];
+      if (resultsNoId.length > 0) {
+        console.log(`[CoconClient] ✅ Got ${resultsNoId.length} votes WITHOUT Id parameter!`);
+        return resultsNoId;
+      }
+    } catch (e) {
+      console.log(`[CoconClient] GetIndividualVotingResults WITHOUT Id failed: ${e.message}`);
+    }
+
+    // Try WITH Id parameter (original approach)
+    console.log(`[CoconClient] Trying WITH Id=${agendaId}...`);
     const url = `${coConBase}/Voting/GetIndividualVotingResults/?Id=${encodeURIComponent(agendaId)}`;
-    console.log(`[CoconClient] Getting individual voting results for agenda ${agendaId}`);
+    console.log(`[CoconClient] URL: ${url}`);
 
     try {
       const resp = await axios.get(url, { timeout: 10000 });
       const raw = typeof resp.data === 'string' ? safeParse(resp.data) : resp.data;
+
+      console.log(`[CoconClient] Response WITH Id=${agendaId}:`, JSON.stringify(raw, null, 2));
 
       const results = raw?.IndividualVotingResults?.VotingResults || [];
       console.log(`[CoconClient] Got ${results.length} individual votes for agenda ${agendaId}`);
