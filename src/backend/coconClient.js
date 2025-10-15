@@ -386,35 +386,37 @@ class CoconClient {
     console.log(`[CoconClient] Stopping voting...`);
     const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
 
-    // For AddInstantVote, we need to use EndAgenda API with the agendaItemNumber
-    if (globalCurrentAgendaId) {
-      console.log(`[CoconClient] Calling EndAgenda for agenda ${globalCurrentAgendaId}...`);
+    // Try SetVotingState('Stop') with retry mechanism
+    // CoCon API is flaky - sometimes Stop doesn't work on first try
+    let maxAttempts = 3;
+    let currentState = 'Unknown';
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const url = `${coConBase}/Meeting_Agenda/EndAgenda?MeetingId=${globalCurrentAgendaId}`;
-        console.log(`[CoconClient] EndAgenda URL: ${url}`);
-        const resp = await axios.get(url, { timeout: 8000 });
-        console.log(`[CoconClient] EndAgenda response:`, resp.data);
-      } catch (e) {
-        console.warn(`[CoconClient] EndAgenda failed: ${e.message}, trying SetVotingState('Stop')...`);
-        // Fallback to SetVotingState if EndAgenda fails
+        console.log(`[CoconClient] Stop attempt ${attempt}/${maxAttempts}...`);
         await this.setVotingState('Stop');
-      }
-    } else {
-      // If no agenda ID, use SetVotingState as fallback
-      await this.setVotingState('Stop');
-    }
 
-    console.log(`[CoconClient] Voting stopped successfully`);
+        // Wait 500ms for CoCon to process
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Verify voting state actually changed to Stopped
-    try {
-      const currentState = await this.getVotingState();
-      console.log(`[CoconClient] Current voting state after Stop: ${currentState}`);
-      if (currentState !== 'Stopped' && currentState !== 'VotingIdle') {
-        console.warn(`[CoconClient] ⚠️ WARNING: Voting state is "${currentState}", expected "Stopped" or "VotingIdle"`);
+        // Check if Stop actually worked
+        currentState = await this.getVotingState();
+        console.log(`[CoconClient] State after Stop attempt ${attempt}: ${currentState}`);
+
+        if (currentState === 'VotingStopped' || currentState === 'VotingIdle') {
+          console.log(`[CoconClient] ✓ Voting stopped successfully on attempt ${attempt}`);
+          break;
+        } else if (currentState === 'VotingStarted') {
+          if (attempt < maxAttempts) {
+            console.warn(`[CoconClient] ⚠️ Stop didn't work (still ${currentState}), retrying...`);
+          } else {
+            console.error(`[CoconClient] ❌ Failed to stop voting after ${maxAttempts} attempts (still ${currentState})`);
+          }
+        }
+      } catch (e) {
+        console.error(`[CoconClient] Stop attempt ${attempt} failed: ${e.message}`);
+        if (attempt === maxAttempts) throw e;
       }
-    } catch (e) {
-      console.error(`[CoconClient] Failed to get voting state: ${e.message}`);
     }
 
     // AUTO-FETCH VOTING RESULTS AFTER STOP
