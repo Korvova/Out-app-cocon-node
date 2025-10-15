@@ -211,8 +211,10 @@ class CoconClient {
   async setVotingState(state) {
     const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
     const url = `${coConBase}/Voting/SetVotingState/?State=${encodeURIComponent(state)}`;
+    console.log(`[CoconClient] Calling SetVotingState: ${state} -> ${url}`);
     const r = await axios.get(url, { timeout: 8000 });
     const str = typeof r.data === 'string' ? r.data : JSON.stringify(r.data);
+    console.log(`[CoconClient] SetVotingState(${state}) response: "${str}"`);
     if (str === '-1' || str === '1') throw new Error('SetVotingState failed: ' + str);
     return true;
   }
@@ -384,6 +386,17 @@ class CoconClient {
     console.log(`[CoconClient] Stopping voting...`);
     await this.setVotingState('Stop');
     console.log(`[CoconClient] Voting stopped successfully`);
+
+    // Verify voting state actually changed to Stopped
+    try {
+      const currentState = await this.getVotingState();
+      console.log(`[CoconClient] Current voting state after Stop: ${currentState}`);
+      if (currentState !== 'Stopped' && currentState !== 'VotingIdle') {
+        console.warn(`[CoconClient] ⚠️ WARNING: Voting state is "${currentState}", expected "Stopped" or "VotingIdle"`);
+      }
+    } catch (e) {
+      console.error(`[CoconClient] Failed to get voting state: ${e.message}`);
+    }
 
     // AUTO-FETCH VOTING RESULTS AFTER STOP
     if (globalCurrentAgendaId) {
