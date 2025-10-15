@@ -270,9 +270,10 @@ class CoconClient {
       `AbstainIndex=3&` +
       `BadgeOption=4&` + // All voting units
       `OverallOption=${voteType === 'OPEN' ? '4' : '1'}&` + // OPEN: show to all
-      // TESTING: Try IndividualOption=4 (All operators) to store results in DB!
+      // TESTING: Try IndividualOption=5 (Everybody during) to store results in DB!
       // 1=Never, 2=Not during vote, 3=Vote master only, 4=All operators, 5=Everybody during
-      `IndividualOption=4&` + // All operators applications - should store in DB!
+      // Option 5 should enable storing individual votes!
+      `IndividualOption=5&` + // Everybody during - MUST store individual votes!
       `CanCorrect=${canCorrect}&` + // IMPORTANT: Allow changing vote!
       `HasPin=false&` +
       `IsWeightUsed=false&` +
@@ -351,8 +352,10 @@ class CoconClient {
 
     // 2. Try to use AddInstantVote to create voting instance
     // According to docs: "Adds a new instance voting item" - creates but doesn't start
-    // Try new template FIRST (with IndividualOption=4 to store results in DB!)
-    const templatesToTry = ['Vote_Store_Results_v2', 'Vote_Store_Results', 'Vote_Correctable_Dynamic', '3_Vote_Correctable', '3_Vote_Public', '3_Vote_Secret'];
+    // Try new template FIRST (with IndividualOption=5 to store results in DB!)
+    // IMPORTANT: Try 3_Vote_Correctable BEFORE Vote_Correctable_Dynamic!
+    // Vote_Correctable_Dynamic doesn't store individual votes!
+    const templatesToTry = ['Vote_Store_Results_v2', 'Vote_Store_Results', '3_Vote_Correctable', '3_Vote_Public', 'Vote_Correctable_Dynamic', '3_Vote_Secret'];
 
     for (const templateName of templatesToTry) {
       try {
