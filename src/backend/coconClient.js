@@ -431,9 +431,16 @@ class CoconClient {
       }
     }
 
-    // AUTO-FETCH VOTING RESULTS AFTER STOP
+    // AUTO-FETCH VOTING RESULTS AFTER STOP (BEFORE CLEAR!)
+    // CRITICAL: Must fetch results BEFORE Clear, as Clear may delete them!
     if (globalCurrentAgendaId) {
       console.log(`[CoconClient] 📊 AUTO-FETCHING voting results for agenda ${globalCurrentAgendaId}...`);
+      console.log(`[CoconClient] ⚠️ IMPORTANT: Fetching BEFORE Clear to preserve results!`);
+
+      // Wait 1 second for CoCon to finalize results
+      console.log(`[CoconClient] Waiting 1 second for CoCon to finalize results...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       try {
         const results = await this.getIndividualVotingResults(globalCurrentAgendaId);
         console.log(`[CoconClient] ✅ Got ${results.length} votes from CoCon:`);
@@ -450,14 +457,16 @@ class CoconClient {
       console.log(`[CoconClient] ⚠️ No agenda ID stored, skipping results fetch`);
     }
 
+    // DON'T CLEAR! Let's see if Clear is deleting results
+    console.log(`[CoconClient] ⚠️ SKIPPING Clear to test if it deletes results...`);
     // Clear voting to return to VotingIdle state
-    try {
-      console.log(`[CoconClient] Clearing voting...`);
-      await this.setVotingState('Clear');
-      console.log(`[CoconClient] Voting cleared successfully`);
-    } catch (e) {
-      console.log(`[CoconClient] Clear voting failed: ${e.message}`);
-    }
+    // try {
+    //   console.log(`[CoconClient] Clearing voting...`);
+    //   await this.setVotingState('Clear');
+    //   console.log(`[CoconClient] Voting cleared successfully`);
+    // } catch (e) {
+    //   console.log(`[CoconClient] Clear voting failed: ${e.message}`);
+    // }
 
     return 'OK';
   }
