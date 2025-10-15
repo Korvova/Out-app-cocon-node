@@ -459,27 +459,47 @@ class CoconClient {
         if (dbId) {
           console.log(`[CoconClient] ✅ Found DB ID: ${dbId} for sequence ${globalCurrentAgendaId}`);
 
-          // Get voting option mapping to understand which ID = FOR/AGAINST/ABSTAIN
-          const mapping = await this.getVotingOptionMapping(dbId);
-
           const results = await this.getIndividualVotingResults(dbId);
           console.log(`[CoconClient] ✅ Got ${results.length} votes from CoCon:`);
-          console.log('========== VOTING RESULTS ==========');
-          results.forEach((vote, index) => {
-            // Try to map VotingOptionId to choice
-            let choice = 'UNKNOWN';
-            if (mapping.optionIdFor && vote.VotingOptionId === mapping.optionIdFor) {
-              choice = 'FOR';
-            } else if (mapping.optionIdAgainst && vote.VotingOptionId === mapping.optionIdAgainst) {
-              choice = 'AGAINST';
-            } else if (mapping.optionIdAbstain && vote.VotingOptionId === mapping.optionIdAbstain) {
-              choice = 'ABSTAIN';
-            }
-            console.log(`  ${index + 1}. DelegateId: ${vote.DelegateId}, VotingOptionId: ${vote.VotingOptionId} (${choice}), Seat: ${vote.SeatNumber}`);
-          });
-          console.log('====================================');
-          console.log(`[CoconClient] Full results:`, JSON.stringify(results, null, 2));
-          console.log(`[CoconClient] Option mapping:`, JSON.stringify(mapping, null, 2));
+
+          if (results.length > 0) {
+            // Map VotingOptionId to choice using relative positioning
+            // Our template ALWAYS creates options in this order:
+            // Option 1 = "За" (FOR), Option 2 = "Против" (AGAINST), Option 3 = "Воздержался" (ABSTAIN)
+            // So: minId = FOR, minId+1 = AGAINST, minId+2 = ABSTAIN
+
+            // Find minimum VotingOptionId to establish baseline
+            const allOptionIds = results.map(v => v.VotingOptionId);
+            const minOptionId = Math.min(...allOptionIds);
+            const mapping = {
+              [minOptionId]: 'FOR',
+              [minOptionId + 1]: 'AGAINST',
+              [minOptionId + 2]: 'ABSTAIN'
+            };
+
+            console.log(`[CoconClient] 📊 Option ID mapping (baseId=${minOptionId}):`, mapping);
+
+            console.log('========== VOTING RESULTS ==========');
+            results.forEach((vote, index) => {
+              const choice = mapping[vote.VotingOptionId] || 'UNKNOWN';
+              console.log(`  ${index + 1}. DelegateId: ${vote.DelegateId}, VotingOptionId: ${vote.VotingOptionId} (${choice}), Seat: ${vote.SeatNumber}`);
+            });
+            console.log('====================================');
+            console.log(`[CoconClient] Full results:`, JSON.stringify(results, null, 2));
+
+            // TODO: Send results to server for database insertion
+            // Format: [{ delegateId, choice: 'FOR'|'AGAINST'|'ABSTAIN', seatNumber }]
+            const processedResults = results.map(vote => ({
+              delegateId: vote.DelegateId,
+              choice: mapping[vote.VotingOptionId] || 'UNKNOWN',
+              seatNumber: vote.SeatNumber,
+              votingOptionId: vote.VotingOptionId
+            }));
+
+            console.log(`[CoconClient] 📤 Processed results ready for server:`, JSON.stringify(processedResults, null, 2));
+          } else {
+            console.log(`[CoconClient] ⚠️ No votes found - either nobody voted or results were cleared`);
+          }
         } else {
           console.error(`[CoconClient] ❌ Could not find DB ID for agenda ${globalCurrentAgendaId}`);
         }
