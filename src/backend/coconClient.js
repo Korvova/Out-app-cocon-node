@@ -3,13 +3,18 @@
 // Later: add native CoCon Room Server / MME integrations.
 
 const axios = require('axios');
+const VotingPoller = require('./votingPoller');
 
 // Global storage for current agenda ID (shared across all CoconClient instances)
 let globalCurrentAgendaId = null;
 
 class CoconClient {
-  constructor({ store }) {
+  constructor({ store, socketClient }) {
     this.store = store;
+    this.socketClient = socketClient;
+
+    // Initialize voting poller
+    this.votingPoller = new VotingPoller(socketClient, this);
   }
 
   get cfg() { return this.store.get('cocon') || {}; }
@@ -410,6 +415,14 @@ class CoconClient {
                 this._cachedVotingOptions = newVoting.VotingOptions;
                 console.log(`[CoconClient] 📊 Saved ${newVoting.VotingOptions.length} VotingOptions for mapping`);
               }
+
+              // START REAL-TIME POLLING for voting results!
+              console.log(`[CoconClient] 🚀 Starting real-time polling for voting results...`);
+              this.votingPoller.start({
+                idInDb: this._currentVotingIdInDb,
+                options: this._cachedVotingOptions,
+                agendaSequence: globalCurrentAgendaId
+              });
             }
           } catch (e) {
             console.log(`[CoconClient] ⚠️ Could not get IdInDb after start: ${e.message}`);
@@ -450,6 +463,10 @@ class CoconClient {
   async stopVoting() {
     console.log(`[CoconClient] Stopping voting...`);
     const coConBase = (this.cfg.coConBase || '').replace(/\/$/, '');
+
+    // STOP REAL-TIME POLLING before stopping voting
+    console.log(`[CoconClient] 🛑 Stopping real-time polling...`);
+    this.votingPoller.stop();
 
     // Try SetVotingState('Stop') with retry mechanism
     // CoCon API is flaky - sometimes Stop doesn't work on first try

@@ -47,6 +47,12 @@ async function startSocketBridge({ store }) {
     },
   });
 
+  // Create GLOBAL CoconClient instance (shared across all commands)
+  // This allows votingPoller to persist between Start and Stop commands
+  const { CoconClient } = require('./coconClient');
+  const coconClient = new CoconClient({ store, socketClient: { socket: sock } });
+  console.log('[socket] ✅ Created global CoconClient instance with VotingPoller');
+
   // Запуск CoCon Event Listener
   console.log('[socket] ============================================');
   console.log('[socket] Attempting to load CoconEventListener...');
@@ -176,7 +182,7 @@ async function startSocketBridge({ store }) {
       if (id) sock.emit('connector:command:ack', { id });
 
       const { handleCommand } = require('./commandHandlers');
-      const result = await handleCommand({ type, payload, store });
+      const result = await handleCommand({ type, payload, store, coconClient });
 
       // Special handling for StopVoting: send voting results to server
       // Send both individual votes (if available) and aggregated results

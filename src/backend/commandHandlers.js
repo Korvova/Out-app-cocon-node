@@ -64,12 +64,22 @@ async function DisableMicrophone({ payload, store }) {
   const client = new CoconClient({ store });
   return await client.disableMicrophone(payload?.userId || payload?.delegateId);
 }
-async function StartVotingWithTemplate({ payload, store }) {
+async function StartVotingWithTemplate({ payload, store, coconClient }) {
+  // Use global coconClient if provided (preserves votingPoller between calls)
+  // Otherwise create new instance (fallback for old code paths)
+  if (coconClient) {
+    return await coconClient.startVotingWithTemplate(payload);
+  }
   const { CoconClient } = require('./coconClient');
   const client = new CoconClient({ store });
   return await client.startVotingWithTemplate(payload);
 }
-async function StopVoting({ store }) {
+async function StopVoting({ store, coconClient }) {
+  // Use global coconClient if provided (preserves votingPoller between calls)
+  // Otherwise create new instance (fallback for old code paths)
+  if (coconClient) {
+    return await coconClient.stopVoting();
+  }
   const { CoconClient } = require('./coconClient');
   const client = new CoconClient({ store });
   return await client.stopVoting();
@@ -196,10 +206,10 @@ const map = {
   WriteFiles,
 };
 
-async function handleCommand({ type, payload, store }) {
+async function handleCommand({ type, payload, store, coconClient }) {
   const fn = map[type];
   if (!fn) throw new Error('Unknown command type: ' + type);
-  return await fn({ payload, store });
+  return await fn({ payload, store, coconClient });
 }
 
 module.exports = { handleCommand };
