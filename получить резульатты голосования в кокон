@@ -1,0 +1,85 @@
+Алгоритм: как получить результаты голосования через коннектор (Televic CoCon)
+
+Предпосылки
+- Коннектор запущен на ПК и подключён к сайту (Socket.IO namespace `/cocon-connector`).
+- На сайте заседание связано с Televic (`Meeting.televicMeetingId` заполнен), участники связаны по `User.televicExternalId = DelegateId` из CoCon.
+- В CoCon доступ к REST: `http://<room-server>:8890/CoCon/...` (в примерах `localhost:8890`).
+
+Шаблон голосования (создать один раз)
+1) Создать шаблон на 3 кнопки с сохранением индивидуальных результатов:
+   - Title: `Vote_Store_Results_v2`
+   - `NrOfOptions=3`, `BadgeOption=4`, `OverallOption=4`, `IndividualOption=5`, `CanCorrect=true`.
+   - Абстенция: `IsAbstain3=true`, `AbstainOption=3`, `AbstainIndex=3`.
+   - Таймер: `EnableVotingTimer=true`, `DurationOfVotingTimer=23:59:59` (сайт управляет длительностью).
+2) Проверка/создание выполняется коннектором при старте. При необходимости можно вручную вызвать `AddVotingTemplate`.
+
+Чистый цикл голосования (надёжный порядок действий)
+1) Очистка перед стартом:
+   - `GET /CoCon/Voting/SetVotingState/?State=Clear`
+   - Если ответ `"1"` (не выполнилось) — подождать 0.5–1 c и повторить (при необходимости `Stop` → `Clear`) до состояния `VotingIdle` (`GET /CoCon/Voting/GetVotingState`).
+2) Создание голосования:
+   - `GET /CoCon/Voting/AddInstantVote/?VotingTemplate=Vote_Store_Results_v2`
+   - Ответ часто только `{ "Result": true }` без ID — это нормально.
+3) Старт голосования:
+   - `GET /CoCon/Voting/SetVotingState/?State=Start` (ответ `"0"` = ок).
+4) Сохранить IdInDb только что созданного пункта (критически важно):
+   - `GET /CoCon/Meeting_Agenda/GetAgendaItemInformationInRunningMeeting`
+   - Взять `Type="VotingAgendaItem" AND State="active"` с максимальным `IdInDb` — это и есть текущее голосование.
+   - Сохранить `currentVotingIdInDb` и `VotingOptions` (Name/Id) для маппинга.
+5) Дать участникам проголосовать (обычно 10–30 секунд; сайт может управлять таймером).
+6) Остановить голосование с ретраями (нестабильность CoCon):
+   - До 3 попыток: `SetVotingState=Stop` → пауза 500 мс → `GetVotingState`.
+   - Успех, когда состояние `VotingStopped`/`VotingIdle`.
+7) Подождать 2–3 секунды, чтобы CoCon финализировал результаты.
+8) Считать результаты по сохранённому `currentVotingIdInDb`:
+   - Индивидуальные: `GET /CoCon/Voting/GetIndividualVotingResults/?Id=<currentVotingIdInDb>`.
+   - Если пусто/`-1`, взять агрегаты (в зависимости от версии CoCon):
+     - `GET /CoCon/Voting/GetGeneralVotingResults/?Id=<currentVotingIdInDb>` (часто доступен).
+     - (Если доступен) `GET /CoCon/Voting/GetAggregatedVotingResults/?Id=<...>`.
+9) Маппинг опций:
+   - Использовать `VotingOptions` из шага 4: `"За" → FOR`, `"Против" → AGAINST`, `"Воздержался" → ABSTAIN`.
+   - Не опираться на “минимальный Id” — лучше по имени опции.
+10) Отправить результаты на сайт (делает коннектор автоматически):
+   - Событие `connector:voting:results` с массивом индивидуальных голосов (`delegateId, choice, seatNumber`) или с агрегированными полями (`votesFor, votesAgainst, votesAbstain, totalVotes`).
+   - Сервер сайта сопоставит `delegateId` с `User.televicExternalId` и запишет голоса/счётчики в БД, рассылая обновления клиентам.
+
+Быстрые проверки и отладка
+- Во время голосования: `GET /CoCon/Voting/GetAmountOfVotes` — показывает, сколько проголосовало сейчас.
+- Участники в заседании: `GET /CoCon/Delegate/GetDelegatesInMeeting/?MeetingId=<runningId>`.
+- Рассадка (кто на местах): `GET /CoCon/Meeting_Agenda/GetDelegateSeating/?MeetingId=<runningId>` (SeatId ≠ 0).
+- Поиск текущего активного заседания: `GET /CoCon/Meeting_Agenda/GetAllMeetings` (State=running → Id).
+
+Типовые коды/ограничения CoCon
+- `SetVotingState`: "0" — успех, "1" — не выполнилось → повторить.
+- `GetIndividualVotingResults`: "-1" — внутренняя ошибка/не доступно (в некоторых сборках после Stop индивидуальные REST недоступны — используйте General).
+- `GetGeneralVotingResults`: "1" — пункт не голосовой/нет результатов/ещё не финализировано.
+
+Частые проблемы и решения
+- Видно сразу несколько `VotingAgendaItem` (ended + active):
+  - Всегда используйте сохранённый `currentVotingIdInDb` из шага 4; не выбирайте “последний ENDED” наугад.
+- Индивидуальные пустые, общий есть:
+  - Нормально для отдельных сборок CoCon. Используйте `GetGeneralVotingResults` как фолбэк.
+- `Clear`/`Stop` часто возвращают "1":
+  - Добавить ретраи с паузами; дождаться `VotingIdle` перед стартом нового цикла.
+- На сайте не появляются голоса:
+  - Убедиться, что у заседания есть `televicMeetingId`, у пользователей заполнен `televicExternalId`, коннектор подключён (проверьте `/api/connectors` на сайте).
+
+Мини‑чек‑лист перед запуском
+- [ ] Коннектор онлайн, подключён к сайту.
+- [ ] Есть шаблон `Vote_Store_Results_v2` с `IndividualOption=5`.
+- [ ] `Clear` до `VotingIdle` прошёл.
+- [ ] Сохранён `currentVotingIdInDb` и `VotingOptions` после старта.
+- [ ] После `Stop` выдержана пауза 2–3 с и считаны результаты по сохранённому `IdInDb`.
+- [ ] Результаты отправлены на сайт (видно в логах коннектора и сервера).
+
+Примеры URL (подставьте свой хост/Id)
+- Активные пункты: `http://localhost:8890/CoCon/Meeting_Agenda/GetAgendaItemInformationInRunningMeeting`
+- Старт/стоп/очистка: `http://localhost:8890/CoCon/Voting/SetVotingState/?State=Start|Stop|Clear`
+- Создать голосование: `http://localhost:8890/CoCon/Voting/AddInstantVote/?VotingTemplate=Vote_Store_Results_v2`
+- Индивидуальные: `http://localhost:8890/CoCon/Voting/GetIndividualVotingResults/?Id=<IdInDb>`
+- Общие итоги: `http://localhost:8890/CoCon/Voting/GetGeneralVotingResults/?Id=<IdInDb>`
+- Мониторинг: `http://localhost:8890/CoCon/Voting/GetAmountOfVotes`
+
+Заметка
+— Поле `Id` в `GetAgendaItemInformationInRunningMeeting` — это порядковый номер (sequence) и может повторяться; для API итогов использовать только `IdInDb`.
+
